@@ -1,0 +1,21 @@
+{
+    "llm.contextWindow": 2048,
+    "llm.fillInTheMiddle.enabled": false,
+    "llm.tlsSkipVerifyInsecure": true,
+    "llm.modelIdOrEndpoint": "http://127.0.0.1:8000/api/generate",
+    "llm.enableAutoSuggest": false,
+    "llm.configTemplate": "Custom",
+    "llm.temperature": 0.6,
+    "llm.maxNewTokens": 60,
+    "llm.tokenizer": {
+        "path": "c:/users/sdp/ofir/huggingface-vscode-enpoint-server/phi-3-mini-4k-instruct-int4-ov"
+    },
+    "llm.tokensToClear": [
+        "<|endoftext|>",
+        "<|assistant|>",
+        "<|system|>",
+        "<|end|>",
+        "</s>",
+        "<|user|>"
+    ]
+}
