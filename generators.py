@@ -1,6 +1,17 @@
+import time
+import logging
+
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizer, PreTrainedModel, GenerationConfig
 from transformers import Pipeline, pipeline
+
 import torch
+
+import openvino_genai as ov_genai
+
+from llm_pipeline_with_hf_tokenizer import LLMPipelineWithHFTokenizer
+
+
+logger = logging.getLogger(__name__)
 
 
 class GeneratorBase:
@@ -9,6 +20,47 @@ class GeneratorBase:
 
     def __call__(self, query: str, parameters: dict = None) -> str:
         return self.generate(query, parameters)
+
+class OpenVinoGenerator(GeneratorBase):
+    def __init__(self, pretrained: str, draft: str = None, device: str = 'GPU', stop_strings: list = None):
+        scheduler_config = ov_genai.SchedulerConfig()
+        scheduler_config.num_kv_blocks = 2048 // 16
+        scheduler_config.dynamic_split_fuse = False
+        scheduler_config.max_num_batched_tokens = 2048
+        self.stop_strings = set(stop_strings) if stop_strings is not None else None
+        self.num_assistant_tokens = 0
+        if draft is not None:
+            draft_scheduler_config = ov_genai.SchedulerConfig()
+            draft_scheduler_config.num_kv_blocks = 2048 // 16
+            draft_scheduler_config.dynamic_split_fuse = False
+            draft_scheduler_config.max_num_batched_tokens = 2048
+            self.num_assistant_tokens = 3
+            draft_model = ov_genai.draft_model = ov_genai.draft_model(draft, device, scheduler_config=draft_scheduler_config)
+            self.pipe = LLMPipelineWithHFTokenizer(pretrained, device, scheduler_config=scheduler_config, draft_model=draft_model)
+        else:
+            self.pipe = LLMPipelineWithHFTokenizer(pretrained, device, scheduler_config=scheduler_config)
+        # warmup
+        self.pipe.generate(['hello'], ov_genai.GenerationConfig(), max_new_tokens=8, num_assistant_tokens=self.num_assistant_tokens)
+        
+    def generate(self, query: str, parameters: dict) -> str:
+        start = time.perf_counter()
+        generation_config = ov_genai.GenerationConfig()
+        generation_config.include_stop_str_in_output = True
+        generation_config.assistant_confidence_threshold = 0
+        generation_config.num_assistant_tokens = self.num_assistant_tokens
+        if self.stop_strings is not None:
+            generation_config.stop_strings = self.stop_strings
+        for k, v in parameters.items():
+            if v is not None:
+                try:
+                    setattr(generation_config, k, v)
+                except AttributeError:
+                    if k not in ["return_full_text"]:
+                        raise
+        # pipe expects a list of strings
+        out = self.pipe.generate([query], generation_config)
+        logger.info(f'Generated in {time.perf_counter() - start:.2f}s')
+        return out.texts[0]
 
 
 class StarCoder(GeneratorBase):

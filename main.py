@@ -1,10 +1,16 @@
+import logging
+
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from generators import GeneratorBase, StarCoder
+from generators import GeneratorBase, StarCoder, OpenVinoGenerator
 import json
 
 from util import logger, get_parser
+
+
+logger = logging.getLogger(__name__)
+
 
 app = FastAPI()
 app.add_middleware(
@@ -30,9 +36,11 @@ async def api(request: Request):
 def main():
     global generator
     args = get_parser().parse_args()
-    generator = StarCoder(args.pretrained, device_map='auto')
+    generator = OpenVinoGenerator(args.pretrained, draft=args.draft)
     uvicorn.run(app, host=args.host, port=args.port)
 
 
 if __name__ == '__main__':
+    # setup logger template and level
+    logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
     main()
