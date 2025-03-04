@@ -43,20 +43,25 @@ class OpenVinoGenerator(GeneratorBase):
         self.pipe.generate(['hello'], ov_genai.GenerationConfig(), max_new_tokens=8, num_assistant_tokens=self.num_assistant_tokens)
         
     def generate(self, query: str, parameters: dict) -> str:
+        logger.info(parameters)
         start = time.perf_counter()
+        query = query.replace('\r', '')
         generation_config = ov_genai.GenerationConfig()
         generation_config.include_stop_str_in_output = True
         generation_config.assistant_confidence_threshold = 0
         generation_config.num_assistant_tokens = self.num_assistant_tokens
         if self.stop_strings is not None:
             generation_config.stop_strings = self.stop_strings
-        for k, v in parameters.items():
-            if v is not None:
-                try:
-                    setattr(generation_config, k, v)
-                except AttributeError:
-                    if k not in ["return_full_text"]:
-                        raise
+        # for k, v in parameters.items():
+        #     if v is not None:
+        #         if k in ['do_sample', 'temperature']:
+        #             continue
+        #         try:
+        #             setattr(generation_config, k, v)
+        #         except AttributeError:
+        #             if k not in ["return_full_text"]:
+        #                 raise
+        generation_config.max_new_tokens = parameters.get('max_new_tokens', 128)
         # pipe expects a list of strings
         out = self.pipe.generate([query], generation_config)
         logger.info(f'Generated in {time.perf_counter() - start:.2f}s')
