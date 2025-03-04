@@ -9,7 +9,7 @@ from transformers import AutoTokenizer#, AutoModelForCausalLM, PreTrainedTokeniz
 import openvino_genai as ov_genai
 
 from llm_pipeline_with_hf_tokenizer import LLMPipelineWithHFTokenizer
-
+from llm_pipeline_with_hf_tokenizer import VLMPipelineWithHFTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,35 @@ class OpenVinoGenerator(GeneratorBase):
         logger.info(f'Generated in {time.perf_counter() - start:.2f}s')
         return out.texts[0]
 
+class OVLMGenerator(GeneratorBase):
+    def __init__(self, pretrained: str, draft: str = None, device: str = 'GPU', stop_strings: list = None, init_tokens=4096):
+        scheduler_config = ov_genai.SchedulerConfig()
+        scheduler_config.num_kv_blocks = init_tokens // 16
+        scheduler_config.dynamic_split_fuse = False
+        scheduler_config.max_num_batched_tokens = init_tokens
+        self.pipe = VLMPipelineWithHFTokenizer(pretrained, device, scheduler_config=scheduler_config)
+        self.stop_strings = set(stop_strings) if stop_strings is not None else set((self.pipe.tokenizer.eos_token,))
+        # warmup
+        self.pipe.generate(['hello'], images=[], generation_config=ov_genai.GenerationConfig())     
+    def generate(self, prompt: str, images: list, parameters: dict) -> str:
+        start = time.perf_counter()
+        generation_config = ov_genai.GenerationConfig()
+        generation_config.include_stop_str_in_output = True
+        apply_chat_template = parameters.pop('apply_chat_template', False)
+        if self.stop_strings is not None:
+            generation_config.stop_strings = self.stop_strings
+        for k, v in parameters.items():
+            if v is not None:
+                try:
+                    setattr(generation_config, k, v)
+                except AttributeError:
+                    if k not in ["return_full_text"]:
+                        raise
+
+        out = self.pipe.generate(prompt, images=images, generation_config=generation_config, apply_chat_template=apply_chat_template)
+        logger.info(f'Generated in {time.perf_counter() - start:.2f}s')
+        return out.texts[0]
+    
 # class StarCoder(GeneratorBase):
 #     def __init__(self, pretrained: str, device: str = None, device_map: str = None):
 #         self.pretrained: str = pretrained

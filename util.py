@@ -1,6 +1,7 @@
 import logging
 import argparse
 
+
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
     level=logging.INFO,
@@ -19,4 +20,9 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument('--host', type=str, default='0.0.0.0')
     parser.add_argument('--pretrained', type=str, required=True)
     parser.add_argument('--draft', type=str, default=None)
+    parser.add_argument('--vision', action='store_true', default=False)
     return parser
+
+
+
+

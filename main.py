@@ -3,7 +3,7 @@ import logging
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from generators import OpenVinoGenerator, GeneratorBase#, StarCoder
+from generators import OpenVinoGenerator, OVLMGenerator, GeneratorBase#, StarCoder
 import json
 
 from util import logger, get_parser
@@ -23,9 +23,16 @@ generator: GeneratorBase = ...
 async def api(request: Request):
     json_request: dict = await request.json()
     inputs = json_request['inputs']
+    images = json_request.get('images', None)
     parameters: dict = json_request['parameters']
+    print("\n\nserver: before generate\n")
+    # logger.info(f'{request.client.host}:{request.client.port} inputs = {json.dumps(inputs)}')
     logger.info(f'{request.client.host}:{request.client.port} inputs = {json.dumps(inputs)}\nparameters = {json.dumps(parameters)}')
-    generated_text: str = generator.generate(inputs, parameters)
+    if images:
+        generated_text: str = generator.generate(inputs, images, parameters)
+    else:
+        generated_text: str = generator.generate(inputs, parameters)
+    print("\n\nserver: Done generate\n")
     logger.info(f'{request.client.host}:{request.client.port} generated_text = {json.dumps(generated_text)}')
     return {
         "generated_text": generated_text,
@@ -36,7 +43,10 @@ async def api(request: Request):
 def main():
     global generator
     args = get_parser().parse_args()
-    generator = OpenVinoGenerator(args.pretrained, draft=args.draft)
+    if args.vision:
+        generator = OVLMGenerator(args.pretrained)
+    else:
+        generator = OpenVinoGenerator(args.pretrained, draft=args.draft)
     uvicorn.run(app, host=args.host, port=args.port)
 
 
