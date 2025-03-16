@@ -61,48 +61,52 @@ class Qwen2VLGenerator(GeneratorBase):
         self.yes_tokens = yes_tokens[0] + yes_tokens[1]
         # self.processor.chat_template = self.processor.chat_template.replace('add_generation_prompt %}<|im_start|>assistant\n', 'add_generation_prompt %}<|im_start|>assistant\n```json\n{\n    \"Reasoning\": \"')
 
+    def _decode(self, inputs, generated_ids):
+        generated_ids_trimmed = [
+                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            ]
+        output_text = self.processor.batch_decode(
+                        generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+                                )[0]
+        return output_text
+
     def generate(self, messages, parameters):
         reasoning_suffix = """```json\n{\n    \"Reasoning\": \""""
         image_inputs, video_inputs = process_vision_info(messages)
         max_new_tokens = parameters.pop('max_new_tokens', 1024)
+        def _generate(text, **kwargs):
+            inputs = self.processor(
+                text=[text],
+                images=image_inputs,
+                videos=video_inputs,
+                padding=True,
+                return_tensors="pt",
+            ).to(self.device)
+            return inputs, self.model.generate(**inputs, **parameters, **kwargs)
+
         # First ask the model if the task is completed
         text = self.processor.apply_chat_template(
             messages + [{'role': 'user', 'content': 'Did you complete the task? Answer with yes or no.'}], 
             tokenize=False, 
             add_generation_prompt=True
         )
-        inputs = self.processor(
-            text=[text],
-            images=image_inputs,
-            videos=video_inputs,
-            padding=True,
-            return_tensors="pt",
-        ).to(self.device)
-        generated_ids = self.model.generate(**inputs, **parameters, max_new_tokens=1)[0]
-        if generated_ids[-1].item() in self.yes_tokens:
+        inputs, generated_ids = _generate(text, max_new_tokens=1)
+        if generated_ids[0][-1].item() in self.yes_tokens:
             return self.DONE_JSON
-        print(self.processor.tokenizer.decode(generated_ids[-1]))
-        text = self.processor.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        ) + reasoning_suffix
-        logger.info(text)
-        # image_inputs, video_inputs = process_vision_info(messages)
-        inputs = self.processor(
-            text=[text],
-            images=image_inputs,
-            videos=video_inputs,
-            padding=True,
-            return_tensors="pt",
-        ).to(self.device)
-        generated_ids = self.model.generate(**inputs, **parameters, max_new_tokens=max_new_tokens)
-        generated_ids_trimmed = [
-            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-        ]
-        output_text = self.processor.batch_decode(
-                            generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-                                    )[0]
-        output_text = reasoning_suffix + output_text
-        return output_text
+        logger.info(self.processor.tokenizer.decode(generated_ids[0][-1]))
+        return_json = False
+        while not return_json:
+            text = self.processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            ) + reasoning_suffix
+            logger.info(text)
+            # image_inputs, video_inputs = process_vision_info(messages)
+            inputs, generated_ids = _generate(text, max_new_tokens=max_new_tokens)
+            output_text = self._decode(inputs, generated_ids)
+            output_text = reasoning_suffix + output_text
+            return_json = True
+
+            return output_text
 
 
 # class OpenVinoGenerator(GeneratorBase):
